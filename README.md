@@ -14,7 +14,8 @@ the parse pipeline.
 ## Layout
 
 ```
-include/tessera/      public API (tessera.h) and on-disk constants (format.h)
+include/tessera/      public API: tessera.h (load), builder.h (write),
+                      query.h (navigate), dump.h (inspect), format.h (constants)
 src/                  loader + the three finishers
   format.c              header + section table
   atoms.c               interned blob pool
@@ -24,10 +25,14 @@ src/                  loader + the three finishers
   flatten.c             finisher: resolve synthesized atoms, fold a digest
   pack.c                finisher: export the graph, optionally adopt the pool
   materialize.c         finisher: apply property rebinds, emit a digest
+  encode.c              writer: assemble a bundle and serialize it
+  query.c               resident read-only view over a loaded bundle
+  dump.c                human-readable rendering of a bundle
+  wbuf.c                growable little-endian output buffer
 fuzz/                 one libFuzzer harness per entry point
 corpus/               per-target seed bundles
-tests/                behavioral unit tests
-tools/                tsb.py — a builder for the format (used to make seeds)
+tests/                behavioral + round-trip unit tests
+tools/                tsbtool.c (CLI) and tsb.py (a Python builder for seeds)
 .clusterfuzzlite/     build.sh + project.yaml for ClusterFuzzLite
 ```
 
@@ -64,13 +69,32 @@ All entry points are read-only with respect to their input buffer and return a
 `tsb_status` code; they never take ownership of `data`. Allocation can be
 redirected with `tsb_set_allocator()`.
 
+For more than a yes/no parse, three companion headers build on the loader:
+
+- **`builder.h`** — assemble atoms, values, nodes and ref ops in memory and
+  `tsb_builder_emit()` a `.tsb` image (the inverse of the loaders).
+- **`query.h`** — `tsb_bundle_open()` keeps a bundle resident behind an opaque
+  handle so you can walk the node graph and read typed property values.
+- **`dump.h`** — `tsb_dump()` renders a bundle as indented text.
+
 ## Building and testing
 
 The library is plain C99 with no dependencies:
 
 ```sh
-cc -Iinclude -Isrc -c src/*.c
+make           # libtessera.a + the tsbtool CLI
+make test      # build and run the unit tests
+
+# or directly:
 cc -Iinclude -Isrc tests/test_tessera.c src/*.c -o test_tessera && ./test_tessera
+```
+
+The `tsbtool` CLI inspects bundles and exercises the round trip:
+
+```sh
+tsbtool dump  input.tsb     # render a bundle as text
+tsbtool check input.tsb     # run every entry point, print each status
+tsbtool roundtrip           # build a sample bundle, emit it, dump it back
 ```
 
 ## Fuzzing

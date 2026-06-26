@@ -16,6 +16,9 @@
 
 #include "tessera/tessera.h"
 #include "tessera/format.h"
+#include "tessera/builder.h"
+#include "tessera/query.h"
+#include "tessera/dump.h"
 #include "bundle.h"
 
 /* Golden outputs of the finishers on golden_bundle(), captured from a known
@@ -148,9 +151,77 @@ static void test_finishers_valid(void) {
     free(g);
 }
 
+/* Build a bundle with the writer, serialize it, re-open it through the query
+ * API, and confirm the round trip preserves structure and values. Also runs
+ * every loader entry point over the emitted image. */
+static void test_roundtrip(void) {
+    TsbBuilder *bld = tsb_builder_new();
+    CHECK(bld != NULL, "builder allocated");
+
+    int a_root = tsb_builder_atom_str(bld, "root");
+    int a_key  = tsb_builder_atom_str(bld, "key");
+    int a_blob = tsb_builder_atom(bld, "\x01\x02\x03\x04", 4);
+
+    int v_int   = tsb_builder_val_int(bld, -99);
+    int v_atom  = tsb_builder_val_atom(bld, (uint32_t)a_blob);
+    uint32_t li[2] = { (uint32_t)v_int, (uint32_t)v_atom };
+    int v_list  = tsb_builder_val_list(bld, li, 2);
+
+    int n0 = tsb_builder_node(bld, 3, (uint32_t)a_root);
+    int n1 = tsb_builder_node(bld, 0, (uint32_t)a_key);
+    tsb_builder_node_child(bld, (uint32_t)n0, (uint32_t)n1);
+    tsb_builder_node_prop(bld, (uint32_t)n0, (uint32_t)a_key, VAL_INT,  (uint32_t)v_int);
+    tsb_builder_node_prop(bld, (uint32_t)n0, (uint32_t)a_key, VAL_LIST, (uint32_t)v_list);
+
+    CHECK(tsb_builder_check(bld) == TSB_OK, "builder check passes");
+
+    uint8_t *img = NULL; size_t n = 0;
+    CHECK(tsb_builder_emit(bld, &img, &n) == TSB_OK && img != NULL, "emit produced an image");
+    tsb_builder_free(bld);
+
+    /* Every entry point should accept the emitted bundle. */
+    CHECK(tsb_open_index(img, n) == TSB_OK, "emitted: open_index OK");
+    CHECK(tsb_flatten(img, n) == TSB_OK, "emitted: flatten OK");
+    CHECK(tsb_pack(img, n) == TSB_OK, "emitted: pack OK");
+    CHECK(tsb_materialize(img, n) == TSB_OK, "emitted: materialize OK");
+
+    /* Re-open and verify structure survived the round trip. */
+    TsbBundle *h = NULL;
+    CHECK(tsb_bundle_open(img, n, &h) == TSB_OK && h != NULL, "emitted: bundle_open OK");
+    if (h) {
+        CHECK(tsb_bundle_atom_count(h) == 3, "roundtrip: 3 atoms");
+        CHECK(tsb_bundle_value_count(h) == 3, "roundtrip: 3 values");
+        CHECK(tsb_bundle_node_count(h) == 2, "roundtrip: 2 nodes");
+
+        uint32_t found;
+        CHECK(tsb_node_find(h, "root", &found) == TSB_OK && found == 0, "roundtrip: find root");
+        CHECK(tsb_node_child_count(h, 0) == 1, "roundtrip: root has one child");
+
+        int64_t iv = 0;
+        CHECK(tsb_value_int(h, 0, &iv) == TSB_OK && iv == -99, "roundtrip: int value preserved");
+        CHECK(tsb_value_list_count(h, 2) == 2, "roundtrip: list length preserved");
+
+        const uint8_t *bp; uint32_t bl;
+        CHECK(tsb_value_bytes(h, 1, &bp, &bl) == TSB_OK && bl == 4, "roundtrip: atom-bytes length");
+
+        /* dump should render without faulting */
+        FILE *devnull = fopen(
+#ifdef _WIN32
+            "NUL"
+#else
+            "/dev/null"
+#endif
+            , "w");
+        if (devnull) { CHECK(tsb_dump(img, n, devnull) == TSB_OK, "roundtrip: dump OK"); fclose(devnull); }
+        tsb_bundle_close(h);
+    }
+    free(img);
+}
+
 int main(void) {
     test_header_errors();
     test_finishers_valid();
+    test_roundtrip();
     if (g_fail) { fprintf(stderr, "\n%d test(s) failed\n", g_fail); return 1; }
     fprintf(stderr, "\nall tests passed\n");
     return 0;
