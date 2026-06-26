@@ -1,0 +1,17 @@
+# build artifacts
+*.o
+*.a
+*.exe
+*.obj
+build/
+out/
+
+# python
+__pycache__/
+*.pyc
+
+# local-only verification + PoC kit (not part of the shipped library)
+tools/pocs/
+tools/verify/
+tools/make_inputs.py
+run_poc.exe

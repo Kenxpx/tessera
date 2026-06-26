@@ -1,0 +1,32 @@
+# libtessera .tsb fuzzing dictionary: container magic, section ids, value tags,
+# and ref op codes. Helps the fuzzer assemble structurally valid bundles that
+# reach the graph finishers.
+magic="TSB1"
+
+# section ids (u16le): atoms, nodes, values, refs
+sec_atoms="\x01\x00"
+sec_nodes="\x02\x00"
+sec_values="\x03\x00"
+sec_refs="\x04\x00"
+
+# value tags
+val_int="\x01"
+val_float="\x02"
+val_bytes="\x03"
+val_list="\x04"
+val_ref="\x05"
+val_u128="\x06"
+
+# bytes sub-encodings
+bytes_inline="\x00"
+bytes_atom="\x01"
+
+# ref ops
+op_link="\x01"
+op_synth="\x02"
+op_concat="\x03"
+op_open_scope="\x04"
+op_close_scope="\x05"
+op_rebind_prop="\x06"
+op_bind_atom="\x07"
+op_adopt="\x08"

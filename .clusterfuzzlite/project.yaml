@@ -1,0 +1,15 @@
+# ClusterFuzzLite project metadata for libtessera.
+language: c
+fuzzing_engines:
+  - libfuzzer
+sanitizers:
+  - address
+# Each entry point drives a different slice of the .tsb parse pipeline; the
+# three graph finishers (flatten/pack/materialize) exercise distinct ref-op
+# families on top of the shared loader.
+fuzz_targets:
+  - open_index_fuzzer
+  - decode_values_fuzzer
+  - flatten_fuzzer
+  - pack_fuzzer
+  - materialize_fuzzer
